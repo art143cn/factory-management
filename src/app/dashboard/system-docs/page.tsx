@@ -102,8 +102,6 @@ export default function SystemDocsPage() {
 
   // Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
 
   // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -141,7 +139,6 @@ export default function SystemDocsPage() {
     setForm(emptyForm);
     setSelectedFile(null);
     setError("");
-    setUploadError("");
     setDialogOpen(true);
   };
 
@@ -156,7 +153,6 @@ export default function SystemDocsPage() {
     });
     setSelectedFile(null);
     setError("");
-    setUploadError("");
     setDialogOpen(true);
   };
 
@@ -166,12 +162,10 @@ export default function SystemDocsPage() {
     setForm(emptyForm);
     setSelectedFile(null);
     setError("");
-    setUploadError("");
     setSaving(false);
-    setUploading(false);
   };
 
-  // ——— Save (create or update) ———
+  // ——— Save (create or update) — single request with file ———
 
   const handleSave = async () => {
     if (!form.title.trim()) {
@@ -182,49 +176,25 @@ export default function SystemDocsPage() {
     setSaving(true);
     setError("");
 
-    let fileUrl: string | null = editing?.fileUrl ?? null;
-    let fileSize: number | null = editing?.fileSize ?? null;
-
-    // Step 1: Upload file if selected
-    if (selectedFile) {
-      setUploading(true);
-      setUploadError("");
-
-      try {
-        const fd = new FormData();
-        fd.append("file", selectedFile);
-        const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
-        const uploadData = await uploadRes.json();
-
-        if (!uploadRes.ok) {
-          setUploadError(uploadData.error || "上传失败");
-          return; // keep dialog open so user can read error
-        }
-
-        fileUrl = uploadData.url;
-        fileSize = uploadData.size;
-      } catch {
-        setUploadError("上传请求异常，请重试");
-        return;
-      } finally {
-        setUploading(false);
-      }
-    }
-
-    // Step 2: Save document record
     try {
+      const fd = new FormData();
+      fd.append("title", form.title);
+      fd.append("category", form.category);
+      fd.append("content", form.content);
+      fd.append("version", form.version);
+      fd.append("status", form.status);
+
+      if (selectedFile) {
+        fd.append("file", selectedFile);
+      } else if (editing && editing.fileUrl && !selectedFile) {
+        // Editing and keeping existing file — tell API to not change it
+        fd.append("keepFile", "true");
+      }
+
       const url = editing ? `/api/documents?id=${editing.id}` : "/api/documents";
       const method = editing ? "PUT" : "POST";
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          fileUrl: fileUrl || null,
-          fileSize: fileSize || null,
-        }),
-      });
+      const res = await fetch(url, { method, body: fd });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -259,8 +229,6 @@ export default function SystemDocsPage() {
   };
 
   const categoryCount = (cat: string) => docs.filter((d) => d.category === cat).length;
-
-  const isBusy = saving || uploading;
 
   return (
     <div className="space-y-6">
@@ -469,10 +437,7 @@ export default function SystemDocsPage() {
                   <input
                     type="file"
                     className="hidden"
-                    onChange={(e) => {
-                      setSelectedFile(e.target.files?.[0] ?? null);
-                      setUploadError("");
-                    }}
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
                   />
                 </label>
                 {selectedFile ? (
@@ -480,17 +445,11 @@ export default function SystemDocsPage() {
                     {selectedFile.name} ({formatFileSize(selectedFile.size)})
                   </span>
                 ) : editing?.fileUrl ? (
-                  <span className="text-sm text-muted-foreground">已有文件（不选则保留原文件）</span>
+                  <span className="text-sm text-muted-foreground">已有文件（不选则保留）</span>
                 ) : (
                   <span className="text-sm text-muted-foreground">可选</span>
                 )}
               </div>
-              {uploadError && (
-                <div className="flex items-center gap-1.5 text-sm text-destructive">
-                  <AlertCircle size={14} />
-                  {uploadError}
-                </div>
-              )}
             </div>
 
             {/* Content */}
@@ -505,7 +464,7 @@ export default function SystemDocsPage() {
               />
             </div>
 
-            {/* General error */}
+            {/* Error */}
             {error && (
               <div className="flex items-center gap-1.5 rounded-mac bg-destructive/10 p-3 text-sm text-destructive">
                 <AlertCircle size={16} />
@@ -515,12 +474,12 @@ export default function SystemDocsPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog} disabled={isBusy}>
+            <Button variant="outline" onClick={closeDialog} disabled={saving}>
               取消
             </Button>
-            <Button onClick={handleSave} disabled={isBusy || !form.title.trim()}>
-              {isBusy && <Loader2 size={16} className="mr-1.5 animate-spin" />}
-              {uploading ? "上传文件中..." : editing ? "保存修改" : "创建"}
+            <Button onClick={handleSave} disabled={saving || !form.title.trim()}>
+              {saving && <Loader2 size={16} className="mr-1.5 animate-spin" />}
+              {saving ? "保存中..." : editing ? "保存修改" : "创建"}
             </Button>
           </DialogFooter>
         </DialogContent>
