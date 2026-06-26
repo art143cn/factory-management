@@ -1,7 +1,15 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { query } from "@/lib/db";
+
+export interface DbUser {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -14,23 +22,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        });
-        if (!user) return null;
+        try {
+          const result = await query(
+            'SELECT id, name, email, password, role FROM "User" WHERE email = $1',
+            [credentials.email as string]
+          );
 
-        const isValid = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        );
-        if (!isValid) return null;
+          if (result.rows.length === 0) return null;
 
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role ?? "user",
-        };
+          const user = result.rows[0] as DbUser;
+          const isValid = await bcrypt.compare(
+            credentials.password as string,
+            user.password
+          );
+          if (!isValid) return null;
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role ?? "user",
+          };
+        } catch {
+          return null;
+        }
       },
     }),
   ],
