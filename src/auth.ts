@@ -1,31 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-
-// 临时用户数据 — 后续可接入数据库
-const users = [
-  {
-    id: "1",
-    name: "管理员",
-    email: "admin@rollingsg.cn",
-    password: bcrypt.hashSync("admin123", 10),
-    role: "admin" as const,
-  },
-  {
-    id: "2",
-    name: "张工",
-    email: "zhang@rollingsg.cn",
-    password: bcrypt.hashSync("zhang123", 10),
-    role: "user" as const,
-  },
-  {
-    id: "3",
-    name: "李工",
-    email: "li@rollingsg.cn",
-    password: bcrypt.hashSync("li123", 10),
-    role: "user" as const,
-  },
-];
+import { prisma } from "@/lib/prisma";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -38,7 +14,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = users.find((u) => u.email === credentials.email);
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email as string },
+        });
         if (!user) return null;
 
         const isValid = await bcrypt.compare(
@@ -51,7 +29,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role,
+          role: user.role ?? "user",
         };
       },
     }),
