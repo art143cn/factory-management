@@ -39,6 +39,8 @@ import {
   Trash2,
   Search,
   Loader2,
+  Upload,
+  Download,
 } from "lucide-react";
 
 interface Document {
@@ -48,6 +50,8 @@ interface Document {
   content: string;
   version: string;
   status: string;
+  fileUrl?: string;
+  fileSize?: number;
   authorId?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -77,6 +81,12 @@ const statusBadge = (status: string) => {
 
 const emptyForm = { title: "", category: "管理制度", content: "", version: "v1.0", status: "draft" };
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
 export default function SystemDocsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +98,9 @@ export default function SystemDocsPage() {
   const [deleting, setDeleting] = useState<Document | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [existingFileLabel, setExistingFileLabel] = useState("");
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -117,23 +130,45 @@ export default function SystemDocsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      let fileUrl = editing?.fileUrl ?? "";
+      let fileSize = editing?.fileSize;
+
+      // Upload file if selected
+      if (selectedFile) {
+        setUploading(true);
+        const uploadForm = new FormData();
+        uploadForm.append("file", selectedFile);
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: uploadForm,
+        });
+        if (!uploadRes.ok) return;
+        const uploadData = await uploadRes.json();
+        fileUrl = uploadData.url;
+        fileSize = uploadData.size;
+        setUploading(false);
+      }
+
       const url = editing ? `/api/documents?id=${editing.id}` : "/api/documents";
       const method = editing ? "PUT" : "POST";
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, fileUrl, fileSize }),
       });
       if (res.ok) {
         setDialogOpen(false);
         setEditing(null);
         setForm(emptyForm);
+        setSelectedFile(null);
+        setExistingFileLabel("");
         await fetchDocs();
       }
     } catch {
       // silent
     } finally {
       setSaving(false);
+      setUploading(false);
     }
   };
 
@@ -160,12 +195,16 @@ export default function SystemDocsPage() {
       version: doc.version,
       status: doc.status,
     });
+    setSelectedFile(null);
+    setExistingFileLabel(doc.fileUrl ? "当前文件" : "");
     setDialogOpen(true);
   };
 
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setSelectedFile(null);
+    setExistingFileLabel("");
     setDialogOpen(true);
   };
 
@@ -237,6 +276,30 @@ export default function SystemDocsPage() {
                 />
               </div>
               <div className="grid gap-2">
+                <Label>上传文件</Label>
+                <div className="flex items-center gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-mac border border-input bg-background px-3 py-2 text-sm hover:bg-accent">
+                    <Upload size={16} />
+                    选择文件
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {selectedFile && (
+                    <span className="text-sm text-muted-foreground">
+                      {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                    </span>
+                  )}
+                  {existingFileLabel && !selectedFile && (
+                    <span className="text-sm text-muted-foreground">
+                      {existingFileLabel}（不选则保留原文件）
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="content">内容</Label>
                 <Textarea
                   id="content"
@@ -251,9 +314,9 @@ export default function SystemDocsPage() {
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 取消
               </Button>
-              <Button onClick={handleSave} disabled={saving || !form.title}>
-                {saving && <Loader2 size={16} className="mr-1.5 animate-spin" />}
-                {editing ? "保存修改" : "创建"}
+              <Button onClick={handleSave} disabled={saving || uploading || !form.title}>
+                {(saving || uploading) && <Loader2 size={16} className="mr-1.5 animate-spin" />}
+                {uploading ? "上传中..." : editing ? "保存修改" : "创建"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -322,6 +385,7 @@ export default function SystemDocsPage() {
                   <TableHead>标题</TableHead>
                   <TableHead>类别</TableHead>
                   <TableHead>版本</TableHead>
+                  <TableHead>文件</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>更新时间</TableHead>
                   <TableHead className="w-[100px]">操作</TableHead>
@@ -335,6 +399,21 @@ export default function SystemDocsPage() {
                       <Badge variant="outline">{doc.category}</Badge>
                     </TableCell>
                     <TableCell>{doc.version}</TableCell>
+                    <TableCell>
+                      {doc.fileUrl ? (
+                        <a
+                          href={doc.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                        >
+                          <Download size={14} />
+                          {doc.fileSize ? formatFileSize(doc.fileSize) : "下载"}
+                        </a>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>{statusBadge(doc.status)}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {doc.updatedAt

@@ -1,12 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  "https://lkqjzquymzfetfarzixv.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrcWp6cXV5bXpmZXRmYXJ6aXh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NDIzMDMsImV4cCI6MjA5ODAxODMwM30.l5Xi6zBRyc-PXFHsIpOUitKqr3mu2wiRutEG426Gga8"
-);
+import { supabase } from "@/lib/supabase";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
