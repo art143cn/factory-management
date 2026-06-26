@@ -1,5 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Flag, Users, BookOpen, Calendar } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "党务管理 · 厂务管理系统",
+};
 
 export default function PartyAffairsPage() {
   return (

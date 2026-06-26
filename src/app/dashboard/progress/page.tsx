@@ -1,5 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { GanttChart, Target, TrendingUp, Clock } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "重点进度跟踪 · 厂务管理系统",
+};
 
 export default function ProgressPage() {
   return (

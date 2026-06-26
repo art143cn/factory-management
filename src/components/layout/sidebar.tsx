@@ -15,7 +15,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
@@ -26,7 +25,7 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-  { title: "工作台", href: "/", icon: LayoutDashboard },
+  { title: "工作台", href: "/dashboard", icon: LayoutDashboard },
   { title: "体系文件管理", href: "/dashboard/system-docs", icon: FileText },
   { title: "项目管理", href: "/dashboard/projects", icon: FolderKanban },
   { title: "重点进度跟踪", href: "/dashboard/progress", icon: GanttChart },
@@ -38,7 +37,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-16 flex-col border-r bg-sidebar/80 backdrop-blur-xl">
+    <aside aria-label="侧边栏导航" className="fixed left-0 top-0 z-40 flex h-screen w-16 flex-col border-r bg-sidebar/80 backdrop-blur-xl">
       {/* Logo */}
       <div className="flex h-14 items-center justify-center border-b">
         <div className="flex h-8 w-8 items-center justify-center rounded-mac bg-primary font-bold text-primary-foreground text-xs">
@@ -47,34 +46,32 @@ export function Sidebar() {
       </div>
 
       {/* Nav items */}
-      <nav className="flex flex-1 flex-col items-center gap-1 px-2 py-4">
-        <TooltipProvider delayDuration={0}>
-          {mainNav.map((item) => {
-            const isActive = pathname === item.href;
-            const Icon = item.icon;
+      <nav aria-label="主导航" className="flex flex-1 flex-col items-center gap-1 px-2 py-4">
+        {mainNav.map((item) => {
+          const isActive = pathname === item.href;
+          const Icon = item.icon;
 
-            return (
-              <Tooltip key={item.href}>
-                <TooltipTrigger asChild>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-mac transition-all duration-200",
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                    )}
-                  >
-                    <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="ml-2">
-                  {item.title}
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </TooltipProvider>
+          return (
+            <Tooltip key={item.href}>
+              <TooltipTrigger asChild>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-mac transition-all duration-200",
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="ml-2">
+                {item.title}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
       </nav>
 
       {/* Version */}

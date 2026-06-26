@@ -5,6 +5,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "工作台 · 厂务管理系统",
+};
 import {
   FileText,
   FolderKanban,
