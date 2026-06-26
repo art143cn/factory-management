@@ -1,15 +1,12 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { query } from "@/lib/db";
+import { createClient } from "@supabase/supabase-js";
 
-export interface DbUser {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-  role: string;
-}
+const supabase = createClient(
+  "https://lkqjzquymzfetfarzixv.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrcWp6cXV5bXpmZXRmYXJ6aXh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NDIzMDMsImV4cCI6MjA5ODAxODMwM30.l5Xi6zBRyc-PXFHsIpOUitKqr3mu2wiRutEG426Gga8"
+);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -23,25 +20,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!credentials?.email || !credentials?.password) return null;
 
         try {
-          const result = await query(
-            'SELECT id, name, email, password, role FROM "User" WHERE email = $1',
-            [credentials.email as string]
-          );
+          const { data, error } = await supabase
+            .from("User")
+            .select("id, name, email, password, role")
+            .eq("email", credentials.email as string)
+            .single();
 
-          if (result.rows.length === 0) return null;
+          if (error || !data) return null;
 
-          const user = result.rows[0] as DbUser;
           const isValid = await bcrypt.compare(
             credentials.password as string,
-            user.password
+            data.password
           );
           if (!isValid) return null;
 
           return {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role ?? "user",
+            id: data.id,
+            name: data.name,
+            email: data.email,
+            role: data.role ?? "user",
           };
         } catch {
           return null;
