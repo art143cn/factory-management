@@ -18,27 +18,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "文件大小不能超过 50MB" }, { status: 400 });
     }
 
+    // Try to create bucket if it doesn't exist
+    const { data: buckets } = await supabase.storage.listBuckets();
+    if (!buckets?.find((b) => b.name === BUCKET_NAME)) {
+      const { error: createError } = await supabase.storage.createBucket(BUCKET_NAME, {
+        public: true,
+      });
+      if (createError) {
+        return NextResponse.json(
+          {
+            error: `存储桶 "${BUCKET_NAME}" 不存在且自动创建失败。请前往 Supabase Dashboard > Storage 手动创建名为 "${BUCKET_NAME}" 的公开存储桶。`,
+            detail: createError.message,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const ext = file.name.split(".").pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-    const { data, error } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(fileName, file, {
         contentType: file.type,
         upsert: false,
       });
 
-    if (error) {
-      if (error.message?.includes("bucket") || error.message?.includes("not found")) {
-        return NextResponse.json(
-          {
-            error:
-              `存储桶 "${BUCKET_NAME}" 不存在。请在 Supabase Dashboard > Storage 中手动创建名为 "${BUCKET_NAME}" 的公开存储桶，然后重试。`,
-          },
-          { status: 400 }
-        );
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
     const { data: urlData } = supabase.storage

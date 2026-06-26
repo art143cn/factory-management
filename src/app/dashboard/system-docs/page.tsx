@@ -101,6 +101,7 @@ export default function SystemDocsPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [existingFileLabel, setExistingFileLabel] = useState("");
+  const [uploadError, setUploadError] = useState("");
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -136,14 +137,20 @@ export default function SystemDocsPage() {
       // Upload file if selected
       if (selectedFile) {
         setUploading(true);
+        setUploadError("");
         const uploadForm = new FormData();
         uploadForm.append("file", selectedFile);
         const uploadRes = await fetch("/api/upload", {
           method: "POST",
           body: uploadForm,
         });
-        if (!uploadRes.ok) return;
         const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+          setUploadError(uploadData.error || "上传失败，请重试");
+          setUploading(false);
+          setSaving(false);
+          return;
+        }
         fileUrl = uploadData.url;
         fileSize = uploadData.size;
         setUploading(false);
@@ -197,6 +204,7 @@ export default function SystemDocsPage() {
     });
     setSelectedFile(null);
     setExistingFileLabel(doc.fileUrl ? "当前文件" : "");
+    setUploadError("");
     setDialogOpen(true);
   };
 
@@ -205,6 +213,7 @@ export default function SystemDocsPage() {
     setForm(emptyForm);
     setSelectedFile(null);
     setExistingFileLabel("");
+    setUploadError("");
     setDialogOpen(true);
   };
 
@@ -225,7 +234,10 @@ export default function SystemDocsPage() {
             </p>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setUploadError("");
+        }}>
           <DialogTrigger asChild>
             <Button onClick={openCreate}>
               <Plus size={16} className="mr-1.5" />
@@ -284,7 +296,10 @@ export default function SystemDocsPage() {
                     <input
                       type="file"
                       className="hidden"
-                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                      onChange={(e) => {
+                        setSelectedFile(e.target.files?.[0] ?? null);
+                        setUploadError("");
+                      }}
                     />
                   </label>
                   {selectedFile && (
@@ -298,6 +313,9 @@ export default function SystemDocsPage() {
                     </span>
                   )}
                 </div>
+                {uploadError && (
+                  <p className="text-sm text-destructive">{uploadError}</p>
+                )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="content">内容</Label>
