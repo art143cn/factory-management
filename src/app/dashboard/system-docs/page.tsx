@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -41,6 +40,7 @@ import {
   Loader2,
   Upload,
   Download,
+  AlertCircle,
 } from "lucide-react";
 
 interface Document {
@@ -50,9 +50,8 @@ interface Document {
   content: string;
   version: string;
   status: string;
-  fileUrl?: string;
-  fileSize?: number;
-  authorId?: string;
+  fileUrl?: string | null;
+  fileSize?: number | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -81,27 +80,34 @@ const statusBadge = (status: string) => {
 
 const emptyForm = { title: "", category: "管理制度", content: "", version: "v1.0", status: "draft" };
 
-function formatFileSize(bytes: number): string {
+const formatFileSize = (bytes: number | null | undefined): string => {
+  if (!bytes) return "";
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
+};
 
 export default function SystemDocsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  // Dialog form state
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Document | null>(null);
-  const [deleting, setDeleting] = useState<Document | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  // Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [existingFileLabel, setExistingFileLabel] = useState("");
   const [uploadError, setUploadError] = useState("");
+
+  // Delete state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState<Document | null>(null);
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -128,56 +134,115 @@ export default function SystemDocsPage() {
     return true;
   });
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      let fileUrl = editing?.fileUrl ?? "";
-      let fileSize = editing?.fileSize;
+  // ——— Dialog open/close ———
 
-      // Upload file if selected
-      if (selectedFile) {
-        setUploading(true);
-        setUploadError("");
-        const uploadForm = new FormData();
-        uploadForm.append("file", selectedFile);
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: uploadForm,
-        });
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setSelectedFile(null);
+    setError("");
+    setUploadError("");
+    setDialogOpen(true);
+  };
+
+  const openEdit = (doc: Document) => {
+    setEditing(doc);
+    setForm({
+      title: doc.title,
+      category: doc.category,
+      content: doc.content,
+      version: doc.version,
+      status: doc.status,
+    });
+    setSelectedFile(null);
+    setError("");
+    setUploadError("");
+    setDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditing(null);
+    setForm(emptyForm);
+    setSelectedFile(null);
+    setError("");
+    setUploadError("");
+    setSaving(false);
+    setUploading(false);
+  };
+
+  // ——— Save (create or update) ———
+
+  const handleSave = async () => {
+    if (!form.title.trim()) {
+      setError("请输入文件标题");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    let fileUrl: string | null = editing?.fileUrl ?? null;
+    let fileSize: number | null = editing?.fileSize ?? null;
+
+    // Step 1: Upload file if selected
+    if (selectedFile) {
+      setUploading(true);
+      setUploadError("");
+
+      try {
+        const fd = new FormData();
+        fd.append("file", selectedFile);
+        const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
         const uploadData = await uploadRes.json();
+
         if (!uploadRes.ok) {
-          setUploadError(uploadData.error || "上传失败，请重试");
-          setUploading(false);
-          setSaving(false);
-          return;
+          setUploadError(uploadData.error || "上传失败");
+          return; // keep dialog open so user can read error
         }
+
         fileUrl = uploadData.url;
         fileSize = uploadData.size;
+      } catch {
+        setUploadError("上传请求异常，请重试");
+        return;
+      } finally {
         setUploading(false);
       }
+    }
 
+    // Step 2: Save document record
+    try {
       const url = editing ? `/api/documents?id=${editing.id}` : "/api/documents";
       const method = editing ? "PUT" : "POST";
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, fileUrl, fileSize }),
+        body: JSON.stringify({
+          ...form,
+          fileUrl: fileUrl || null,
+          fileSize: fileSize || null,
+        }),
       });
-      if (res.ok) {
-        setDialogOpen(false);
-        setEditing(null);
-        setForm(emptyForm);
-        setSelectedFile(null);
-        setExistingFileLabel("");
-        await fetchDocs();
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || `请求失败 (${res.status})`);
+        return;
       }
+
+      // Success
+      closeDialog();
+      await fetchDocs();
     } catch {
-      // silent
+      setError("网络异常，请重试");
     } finally {
       setSaving(false);
-      setUploading(false);
     }
   };
+
+  // ——— Delete ———
 
   const handleDelete = async () => {
     if (!deleting) return;
@@ -193,35 +258,13 @@ export default function SystemDocsPage() {
     }
   };
 
-  const openEdit = (doc: Document) => {
-    setEditing(doc);
-    setForm({
-      title: doc.title,
-      category: doc.category,
-      content: doc.content,
-      version: doc.version,
-      status: doc.status,
-    });
-    setSelectedFile(null);
-    setExistingFileLabel(doc.fileUrl ? "当前文件" : "");
-    setUploadError("");
-    setDialogOpen(true);
-  };
-
-  const openCreate = () => {
-    setEditing(null);
-    setForm(emptyForm);
-    setSelectedFile(null);
-    setExistingFileLabel("");
-    setUploadError("");
-    setDialogOpen(true);
-  };
-
   const categoryCount = (cat: string) => docs.filter((d) => d.category === cat).length;
+
+  const isBusy = saving || uploading;
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* ——— Page Header ——— */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="rounded-mac bg-blue-500/10 p-2">
@@ -234,114 +277,13 @@ export default function SystemDocsPage() {
             </p>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setUploadError("");
-        }}>
-          <DialogTrigger asChild>
-            <Button onClick={openCreate}>
-              <Plus size={16} className="mr-1.5" />
-              新建
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>{editing ? "编辑文件" : "新建文件"}</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="title">文件标题</Label>
-                <Input
-                  id="title"
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="请输入文件标题"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="category">类别</Label>
-                  <Select
-                    id="category"
-                    options={CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
-                    value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="version">版本号</Label>
-                  <Input
-                    id="version"
-                    value={form.version}
-                    onChange={(e) => setForm({ ...form, version: e.target.value })}
-                    placeholder="v1.0"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="status">状态</Label>
-                <Select
-                  id="status"
-                  options={STATUS_OPTIONS}
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>上传文件</Label>
-                <div className="flex items-center gap-3">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-mac border border-input bg-background px-3 py-2 text-sm hover:bg-accent">
-                    <Upload size={16} />
-                    选择文件
-                    <input
-                      type="file"
-                      className="hidden"
-                      onChange={(e) => {
-                        setSelectedFile(e.target.files?.[0] ?? null);
-                        setUploadError("");
-                      }}
-                    />
-                  </label>
-                  {selectedFile && (
-                    <span className="text-sm text-muted-foreground">
-                      {selectedFile.name} ({formatFileSize(selectedFile.size)})
-                    </span>
-                  )}
-                  {existingFileLabel && !selectedFile && (
-                    <span className="text-sm text-muted-foreground">
-                      {existingFileLabel}（不选则保留原文件）
-                    </span>
-                  )}
-                </div>
-                {uploadError && (
-                  <p className="text-sm text-destructive">{uploadError}</p>
-                )}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="content">内容</Label>
-                <Textarea
-                  id="content"
-                  value={form.content}
-                  onChange={(e) => setForm({ ...form, content: e.target.value })}
-                  placeholder="请输入文件内容"
-                  rows={8}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                取消
-              </Button>
-              <Button onClick={handleSave} disabled={saving || uploading || !form.title}>
-                {(saving || uploading) && <Loader2 size={16} className="mr-1.5 animate-spin" />}
-                {uploading ? "上传中..." : editing ? "保存修改" : "创建"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={openCreate}>
+          <Plus size={16} className="mr-1.5" />
+          新建
+        </Button>
       </div>
 
-      {/* Category Filter Cards */}
+      {/* ——— Category Filter Cards ——— */}
       <div className="grid gap-4 md:grid-cols-3">
         {CATEGORIES.map((cat) => {
           const Icon = cat.icon;
@@ -371,7 +313,7 @@ export default function SystemDocsPage() {
         })}
       </div>
 
-      {/* Search & Table */}
+      {/* ——— Search & Table ——— */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -440,11 +382,7 @@ export default function SystemDocsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(doc)}
-                        >
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(doc)}>
                           <Pencil size={15} />
                         </Button>
                         <Button
@@ -467,7 +405,128 @@ export default function SystemDocsPage() {
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Dialog */}
+      {/* ——— Create / Edit Dialog ——— */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        if (!open) closeDialog();
+      }}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>{editing ? "编辑文件" : "新建文件"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Title */}
+            <div className="grid gap-2">
+              <Label htmlFor="title">文件标题 <span className="text-destructive">*</span></Label>
+              <Input
+                id="title"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="请输入文件标题"
+              />
+            </div>
+
+            {/* Category + Version */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="category">类别</Label>
+                <Select
+                  id="category"
+                  options={CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="version">版本号</Label>
+                <Input
+                  id="version"
+                  value={form.version}
+                  onChange={(e) => setForm({ ...form, version: e.target.value })}
+                  placeholder="v1.0"
+                />
+              </div>
+            </div>
+
+            {/* Status */}
+            <div className="grid gap-2">
+              <Label htmlFor="status">状态</Label>
+              <Select
+                id="status"
+                options={STATUS_OPTIONS}
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+              />
+            </div>
+
+            {/* File Upload */}
+            <div className="grid gap-2">
+              <Label>上传文件</Label>
+              <div className="flex items-center gap-3">
+                <label className="flex cursor-pointer items-center gap-2 rounded-mac border border-input bg-background px-3 py-2 text-sm hover:bg-accent">
+                  <Upload size={16} />
+                  选择文件
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      setSelectedFile(e.target.files?.[0] ?? null);
+                      setUploadError("");
+                    }}
+                  />
+                </label>
+                {selectedFile ? (
+                  <span className="text-sm text-muted-foreground">
+                    {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                  </span>
+                ) : editing?.fileUrl ? (
+                  <span className="text-sm text-muted-foreground">已有文件（不选则保留原文件）</span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">可选</span>
+                )}
+              </div>
+              {uploadError && (
+                <div className="flex items-center gap-1.5 text-sm text-destructive">
+                  <AlertCircle size={14} />
+                  {uploadError}
+                </div>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="grid gap-2">
+              <Label htmlFor="content">内容</Label>
+              <Textarea
+                id="content"
+                value={form.content}
+                onChange={(e) => setForm({ ...form, content: e.target.value })}
+                placeholder="请输入文件内容（可选）"
+                rows={8}
+              />
+            </div>
+
+            {/* General error */}
+            {error && (
+              <div className="flex items-center gap-1.5 rounded-mac bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle size={16} />
+                {error}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog} disabled={isBusy}>
+              取消
+            </Button>
+            <Button onClick={handleSave} disabled={isBusy || !form.title.trim()}>
+              {isBusy && <Loader2 size={16} className="mr-1.5 animate-spin" />}
+              {uploading ? "上传文件中..." : editing ? "保存修改" : "创建"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ——— Delete Confirmation Dialog ——— */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
