@@ -1,19 +1,24 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  prisma: any | undefined;
 };
 
-function createPrismaClient() {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let prisma: any;
+
+if (globalForPrisma.prisma) {
+  prisma = globalForPrisma.prisma;
+} else {
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL!,
   });
-  return new PrismaClient({ adapter });
+  prisma = new PrismaClient({ adapter });
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma = prisma;
+  }
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+export { prisma };
