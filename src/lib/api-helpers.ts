@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "./prisma";
 import { auth } from "@/auth";
+import { getToken } from "next-auth/jwt";
+import { cookies } from "next/headers";
 
 export function apiError(error: unknown, status = 500) {
   console.error(error);
@@ -13,11 +15,41 @@ export function apiSuccess<T>(data: T, status = 200) {
 }
 
 export async function requireAuth() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    throw new Error("未登录");
+  // Method 1: Use getToken — reads JWT directly from cookie, most reliable
+  try {
+    const cookieStore = await cookies();
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((c) => `${c.name}=${c.value}`)
+      .join("; ");
+    const token = await getToken({
+      req: {
+        headers: { cookie: cookieHeader } as Record<string, string>,
+      },
+    });
+    if (token?.sub) {
+      return {
+        id: token.sub,
+        name: token.name ?? "",
+        email: token.email ?? "",
+        role: (token as any).role ?? "user",
+      };
+    }
+  } catch {
+    // fall through to auth()
   }
-  return session.user;
+
+  // Method 2: Use NextAuth auth() as fallback
+  try {
+    const session = await auth();
+    if (session?.user?.id) {
+      return session.user;
+    }
+  } catch {
+    // fall through to error
+  }
+
+  throw new Error("未登录");
 }
 
 export function handlePrismaError(error: unknown) {

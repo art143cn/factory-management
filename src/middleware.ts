@@ -16,6 +16,9 @@ const { auth } = NextAuth({
 });
 
 export default auth((req) => {
+  // Never intercept API routes — they use requireAuth() internally
+  if (req.nextUrl.pathname.startsWith("/api")) return;
+
   const isLoggedIn = !!req.auth;
   const isOnLoginPage = req.nextUrl.pathname.startsWith("/login");
 
