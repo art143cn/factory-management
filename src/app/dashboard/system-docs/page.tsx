@@ -41,7 +41,9 @@ import {
   Upload,
   Download,
   AlertCircle,
+  FolderUp,
 } from "lucide-react";
+import BatchUploadDialog from "@/components/batch-upload-dialog";
 
 interface Document {
   id: string;
@@ -106,6 +108,9 @@ export default function SystemDocsPage() {
   // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState<Document | null>(null);
+
+  // Batch upload state
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -245,10 +250,16 @@ export default function SystemDocsPage() {
             </p>
           </div>
         </div>
-        <Button onClick={openCreate}>
-          <Plus size={16} className="mr-1.5" />
-          新建
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setBatchDialogOpen(true)}>
+            <FolderUp size={16} className="mr-1.5" />
+            批量上传
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus size={16} className="mr-1.5" />
+            新建
+          </Button>
+        </div>
       </div>
 
       {/* ——— Category Filter Cards ——— */}
@@ -504,6 +515,15 @@ export default function SystemDocsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ——— Batch Upload Dialog ——— */}
+      <BatchUploadDialog
+        open={batchDialogOpen}
+        onOpenChange={setBatchDialogOpen}
+        onComplete={fetchDocs}
+        categories={CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
+        statusOptions={STATUS_OPTIONS}
+      />
     </div>
   );
 }
