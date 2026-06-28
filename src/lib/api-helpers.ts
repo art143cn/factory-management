@@ -1,8 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "./prisma";
 import { auth } from "@/auth";
 import { getToken } from "next-auth/jwt";
-import { cookies } from "next/headers";
 
 export function apiError(error: unknown, status = 500) {
   console.error(error);
@@ -14,39 +13,32 @@ export function apiSuccess<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-export async function requireAuth() {
-  // Method 1: Use getToken — reads JWT directly from cookie, most reliable
-  try {
-    const cookieStore = await cookies();
-    const cookieHeader = cookieStore
-      .getAll()
-      .map((c) => `${c.name}=${c.value}`)
-      .join("; ");
-    const token = await getToken({
-      req: {
-        headers: { cookie: cookieHeader } as Record<string, string>,
-      },
-    });
-    if (token?.sub) {
-      return {
-        id: token.sub,
-        name: token.name ?? "",
-        email: token.email ?? "",
-        role: (token as any).role ?? "user",
-      };
+export async function requireAuth(request?: NextRequest) {
+  // Method 1: getToken with the real request object (most reliable in Route Handlers)
+  if (request) {
+    try {
+      const token = await getToken({ req: request as any });
+      if (token?.sub) {
+        return {
+          id: token.sub,
+          name: token.name ?? "",
+          email: token.email ?? "",
+          role: (token as any).role ?? "user",
+        };
+      }
+    } catch (e) {
+      console.error("getToken failed:", e);
     }
-  } catch {
-    // fall through to auth()
   }
 
-  // Method 2: Use NextAuth auth() as fallback
+  // Method 2: auth() as fallback
   try {
     const session = await auth();
     if (session?.user?.id) {
       return session.user;
     }
-  } catch {
-    // fall through to error
+  } catch (e) {
+    console.error("auth() failed:", e);
   }
 
   throw new Error("未登录");

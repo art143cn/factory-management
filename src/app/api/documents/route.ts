@@ -7,7 +7,7 @@ const BUCKET_NAME = "documents";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -64,7 +64,7 @@ async function uploadFile(file: File): Promise<{ url: string; size: number }> {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuth(request);
 
     const contentType = request.headers.get("content-type") || "";
 
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) return apiError(new Error("缺少 id 参数"), 400);
@@ -202,7 +202,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) return apiError(new Error("缺少 id 参数"), 400);

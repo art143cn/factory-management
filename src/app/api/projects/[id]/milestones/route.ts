@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const milestoneId = searchParams.get("id");
@@ -41,7 +41,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { id } = await params;
     const body = await request.json();
     const milestone = await prisma.milestone.create({
@@ -65,7 +65,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const milestoneId = searchParams.get("id");
@@ -93,7 +93,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { searchParams } = new URL(request.url);
     const milestoneId = searchParams.get("id");
     if (!milestoneId) return apiError(new Error("缺少 id 参数"), 400);

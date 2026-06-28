@@ -29,7 +29,7 @@ async function uploadFile(file: File): Promise<{ url: string; size: number; name
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuth(request);
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];

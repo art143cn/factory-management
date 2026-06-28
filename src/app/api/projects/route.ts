@@ -4,7 +4,7 @@ import { apiSuccess, apiError, requireAuth, handlePrismaError } from "@/lib/api-
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth();
+    const user = await requireAuth(request);
     const body = await request.json();
     const project = await prisma.project.create({
       data: {
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) return apiError(new Error("缺少 id 参数"), 400);
@@ -88,7 +88,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAuth();
+    await requireAuth(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) return apiError(new Error("缺少 id 参数"), 400);
