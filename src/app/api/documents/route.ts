@@ -40,12 +40,6 @@ export async function GET(request: NextRequest) {
 }
 
 async function uploadFile(file: File): Promise<{ url: string; size: number }> {
-  // Ensure bucket exists
-  const { data: buckets } = await supabase.storage.listBuckets();
-  if (!buckets?.find((b) => b.name === BUCKET_NAME)) {
-    await supabase.storage.createBucket(BUCKET_NAME, { public: true });
-  }
-
   const ext = file.name.split(".").pop();
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
