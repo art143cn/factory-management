@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { jwtDecrypt } from "jose";
+import { auth } from "@/auth";
+import { getToken } from "next-auth/jwt";
 
 export function apiError(error: unknown, status = 500) {
   console.error(error);
@@ -14,50 +15,56 @@ export function apiSuccess<T>(data: T, status = 200) {
 export async function requireAuth(request?: NextRequest) {
   if (!request) throw new Error("未登录");
 
-  // Read session cookie directly from request headers
-  const cookieHeader = request.headers.get("cookie") || "";
-  let sessionToken = "";
-
-  for (const cookie of cookieHeader.split("; ")) {
-    const trimmed = cookie.trim();
-    if (trimmed.startsWith("__Secure-next-auth.session-token=")) {
-      sessionToken = trimmed.slice("__Secure-next-auth.session-token=".length);
-      break;
-    }
-    if (trimmed.startsWith("next-auth.session-token=")) {
-      sessionToken = trimmed.slice("next-auth.session-token=".length);
-      break;
-    }
-  }
-
-  if (!sessionToken) {
-    console.error("No session cookie found in request headers. Cookie header:", cookieHeader.substring(0, 100));
-    throw new Error("未登录");
-  }
-
+  // Use getToken with explicit secureCookie=true and secret.
+  // secureCookie MUST be true on Vercel (HTTPS gives __Secure- cookie prefix).
   try {
-    // NextAuth v5 encrypts the JWT as a JWE (dir key management)
-    // The key is SHA-256 hash of NEXTAUTH_SECRET
-    const secret = process.env.NEXTAUTH_SECRET || "";
-    if (!secret) {
-      console.error("NEXTAUTH_SECRET not set");
-      throw new Error("未登录");
+    const token = await getToken({
+      req: request as any,
+      secret: process.env.NEXTAUTH_SECRET,
+      secureCookie: true,
+    });
+    if (token?.sub) {
+      return {
+        id: token.sub,
+        name: token.name ?? "",
+        email: token.email ?? "",
+        role: (token as any).role ?? "user",
+      };
     }
-
-    const keyBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
-    const key = new Uint8Array(keyBytes);
-
-    const { payload } = await jwtDecrypt(sessionToken, key);
-    return {
-      id: (payload.sub as string) || "",
-      name: (payload.name as string) || "",
-      email: (payload.email as string) || "",
-      role: (payload.role as string) || "user",
-    };
   } catch (e) {
-    console.error("JWT decryption failed:", e);
-    throw new Error("未登录");
+    console.error("getToken with secureCookie failed:", e);
   }
+
+  // Fallback: try without secureCookie (e.g. localhost dev)
+  try {
+    const token = await getToken({
+      req: request as any,
+      secret: process.env.NEXTAUTH_SECRET,
+      secureCookie: false,
+    });
+    if (token?.sub) {
+      return {
+        id: token.sub,
+        name: token.name ?? "",
+        email: token.email ?? "",
+        role: (token as any).role ?? "user",
+      };
+    }
+  } catch (e) {
+    console.error("getToken without secureCookie failed:", e);
+  }
+
+  // Last resort: NextAuth auth()
+  try {
+    const session = await auth();
+    if (session?.user?.id) {
+      return session.user;
+    }
+  } catch (e) {
+    console.error("auth() failed:", e);
+  }
+
+  throw new Error("未登录");
 }
 
 export function handlePrismaError(error: unknown) {
