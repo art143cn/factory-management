@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "./prisma";
-import { auth } from "@/auth";
-import { getToken } from "next-auth/jwt";
+import { jwtDecrypt } from "jose";
 
 export function apiError(error: unknown, status = 500) {
   console.error(error);
@@ -14,34 +12,52 @@ export function apiSuccess<T>(data: T, status = 200) {
 }
 
 export async function requireAuth(request?: NextRequest) {
-  // Method 1: getToken with the real request object (most reliable in Route Handlers)
-  if (request) {
-    try {
-      const token = await getToken({ req: request as any });
-      if (token?.sub) {
-        return {
-          id: token.sub,
-          name: token.name ?? "",
-          email: token.email ?? "",
-          role: (token as any).role ?? "user",
-        };
-      }
-    } catch (e) {
-      console.error("getToken failed:", e);
+  if (!request) throw new Error("未登录");
+
+  // Read session cookie directly from request headers
+  const cookieHeader = request.headers.get("cookie") || "";
+  let sessionToken = "";
+
+  for (const cookie of cookieHeader.split("; ")) {
+    const trimmed = cookie.trim();
+    if (trimmed.startsWith("__Secure-next-auth.session-token=")) {
+      sessionToken = trimmed.slice("__Secure-next-auth.session-token=".length);
+      break;
+    }
+    if (trimmed.startsWith("next-auth.session-token=")) {
+      sessionToken = trimmed.slice("next-auth.session-token=".length);
+      break;
     }
   }
 
-  // Method 2: auth() as fallback
+  if (!sessionToken) {
+    console.error("No session cookie found in request headers. Cookie header:", cookieHeader.substring(0, 100));
+    throw new Error("未登录");
+  }
+
   try {
-    const session = await auth();
-    if (session?.user?.id) {
-      return session.user;
+    // NextAuth v5 encrypts the JWT as a JWE (dir key management)
+    // The key is SHA-256 hash of NEXTAUTH_SECRET
+    const secret = process.env.NEXTAUTH_SECRET || "";
+    if (!secret) {
+      console.error("NEXTAUTH_SECRET not set");
+      throw new Error("未登录");
     }
-  } catch (e) {
-    console.error("auth() failed:", e);
-  }
 
-  throw new Error("未登录");
+    const keyBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+    const key = new Uint8Array(keyBytes);
+
+    const { payload } = await jwtDecrypt(sessionToken, key);
+    return {
+      id: (payload.sub as string) || "",
+      name: (payload.name as string) || "",
+      email: (payload.email as string) || "",
+      role: (payload.role as string) || "user",
+    };
+  } catch (e) {
+    console.error("JWT decryption failed:", e);
+    throw new Error("未登录");
+  }
 }
 
 export function handlePrismaError(error: unknown) {
